@@ -1,0 +1,79 @@
+{
+  "tasks": [
+    {
+      "id": "20260518052002-vjwd",
+      "title": "AI 이미지 생성 API 연동",
+      "description": "자동 등록 (Writer 산출물에서 추출)",
+      "owner": "agent",
+      "agentIds": [
+        "writer"
+      ],
+      "createdAt": "2026-05-18T05:20:02.703Z",
+      "status": "pending",
+      "sessionDir": "2026-05-18T05-07",
+      "nudges": 0,
+      "priority": "normal",
+      "preAlarmsSent": []
+    },
+    {
+      "id": "20260518052002-4pbe",
+      "title": "기본 퀘스트/보상 시스템",
+      "description": "자동 등록 (Writer 산출물에서 추출)",
+      "owner": "agent",
+      "agentIds": [
+        "writer"
+      ],
+      "createdAt": "2026-05-18T05:20:02.704Z",
+      "status": "pending",
+      "sessionDir": "2026-05-18T05-07",
+      "nudges": 0,
+      "priority": "normal",
+      "preAlarmsSent": []
+    },
+    {
+      "id": "20260518052002-blt2",
+      "title": "포인트 저장소 (Firebase/Supabase)",
+      "description": "자동 등록 (Writer 산출물에서 추출)",
+      "owner": "agent",
+      "agentIds": [
+        "writer"
+      ],
+      "createdAt": "2026-05-18T05:20:02.705Z",
+      "status": "pending",
+      "sessionDir": "2026-05-18T05-07",
+      "nudges": 0,
+      "priority": "normal",
+      "preAlarmsSent": []
+    },
+    {
+      "id": "20260518052002-6zyf",
+      "title": "SNS 공유 버튼 (iOS/Android)",
+      "description": "자동 등록 (Writer 산출물에서 추출)",
+      "owner": "agent",
+      "agentIds": [
+        "writer"
+      ],
+      "createdAt": "2026-05-18T05:20:02.705Z",
+      "status": "pending",
+      "sessionDir": "2026-05-18T05-07",
+      "nudges": 0,
+      "priority": "normal",
+      "preAlarmsSent": []
+    },
+    {
+      "id": "20260518052002-d3kk",
+      "title": "친구 추천 페이지",
+      "description": "자동 등록 (Writer 산출물에서 추출)",
+      "owner": "agent",
+      "agentIds": [
+        "writer"
+      ],
+      "createdAt": "2026-05-18T05:20:02.705Z",
+      "status": "pending",
+      "sessionDir": "2026-05-18T05-07",
+      "nudges": 0,
+      "priority": "normal",
+      "preAlarmsSent": []
+    }
+  ]
+}
