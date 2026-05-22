@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ctrl+Z: Rage Game Prototype</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background-color: #1a1a2e; 
+            color: #e94560; 
+            font-family: 'Courier New', Courier, monospace; 
+        }
+        #altimeter { 
+            position: absolute; 
+            top: 20px; 
+            right: 20px; 
+            font-size: 32px; 
+            font-weight: bold; 
+            text-shadow: 2px 2px 4px #0f3460; 
+            z-index: 10;
+        }
+        #instructions { 
+            position: absolute; 
+            top: 20px; 
+            left: 20px; 
+            font-size: 18px; 
+            color: #fff;
+            pointer-events: none;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 8px;
+            z-index: 10;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <strong>조작 방법:</strong><br>
+        1. 캐릭터(빨간 네모)를 마우스로 클릭하고 <strong>반대 방향으로 드래그</strong>하세요.<br>
+        2. 마우스를 놓으면 새총처럼 튕겨 올라갑니다.<br>
+        3. 최대한 높이 올라가보세요! (떨어지면 태초마을입니다)
+    </div>
+    <div id="altimeter">0m</div>
+    
+    <div id="gameOverScreen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; flex-direction: column; justify-content: center; align-items: center; color: white;">
+        <h1 id="gameOverMessage" style="font-size: 48px; margin-bottom: 20px;">GAME OVER</h1>
+        <p id="finalScore" style="font-size: 24px; margin-bottom: 40px;">최고 도달: 0m</p>
+        <button onclick="restartGame()" style="padding: 15px 30px; font-size: 20px; font-weight: bold; background: #e94560; border: none; border-radius: 8px; color: white; cursor: pointer;">다시 시작하기 (단축키: Z)</button>
+    </div>
+
+    <script>
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Mouse = Matter.Mouse,
+              MouseConstraint = Matter.MouseConstraint,
+              Events = Matter.Events,
+              Vector = Matter.Vector;
+
+        // 엔진 생성
+        const engine = Engine.create();
+        const world = engine.world;
+        
+        // 중력 조정 (무겁고 짜증나는 느낌을 위해 약간 강하게)
+        engine.gravity.y = 1.5;
+
+        // 렌더러 생성
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false,
+                background: '#1a1a2e'
+            }
+        });
+
+        // 플레이어 캐릭터 생성 (마찰력과 튕김 정도 설정)
+        const player = Bodies.rectangle(window.innerWidth / 2, window.innerHeight - 100, 40, 40, { 
+            restitution: 0.2, // 튕김 
+            friction: 0.8, // 바닥 미끄러짐 방지
+            density: 0.01, // 무게감 (훨씬 가볍게 수정하여 잘 튕겨나가게 함)
+            render: { fillStyle: '#e94560' }
+        });
+
+        // 바닥 및 양쪽 벽 (시작 지점)
+        const ground = Bodies.rectangle(window.innerWidth / 2, window.innerHeight, window.innerWidth * 3, 60, { isStatic: true, render: { fillStyle: '#0f3460' } });
+        const leftWall = Bodies.rectangle(0, -window.innerHeight * 10, 60, window.innerHeight * 20, { isStatic: true, render: { fillStyle: '#0f3460' } });
+        const rightWall = Bodies.rectangle(window.innerWidth, -window.innerHeight * 10, 60, window.innerHeight * 20, { isStatic: true, render: { fillStyle: '#0f3460' } });
+
+        Composite.add(world, [player, ground, leftWall, rightWall]);
+
+        // 절차적 맵 생성 (무한 수직 스크롤링 및 난이도 증가)
+        let highestY = window.innerHeight - 100;
+        let platforms = [];
+        
+        const generateMorePlatforms = (targetY) => {
+            // 화면 상단보다 2000px 위까지 미리 생성 유지
+            while (highestY > targetY - 2000) { 
+                // 고도(m) 계산
+                const currentHeight = Math.max(0, (window.innerHeight - highestY) / 50); 
+                // 난이도 계수 (0.0 ~ 1.0, 초반 난이도를 낮추기 위해 3000m에서 최대 난이도 도달로 변경)
+                const difficulty = Math.min(currentHeight / 3000, 1); 
+
+                // 초반 발판이 훨씬 넓게(최대 350px 이상) 생성되도록 수정
+                const minWidth = 80 + (120 * (1 - difficulty));
+                const maxWidth = minWidth + 150 * (1 - difficulty);
+                const width = Math.random() * (maxWidth - minWidth) + minWidth;
+
+                // 초반(최하단)에서는 다음 발판이 무조건 화면 안에 보이도록 강제 조정
+                let yGap;
+                if (currentHeight < 10) { // 처음 500px 구간
+                    yGap = 120; // 첫 발판들은 촘촘하게 배치
+                } else {
+                    // 발판 간의 세로 간격을 넓혀 너무 가깝게 붙어있지 않도록 수정
+                    const minGap = 150 + (200 * difficulty); // 기본 150px 이상
+                    const maxGap = minGap + 150;
+                    yGap = Math.random() * (maxGap - minGap) + minGap;
+                }
+
+                const x = Math.random() * (window.innerWidth - 200) + 100;
+                const y = highestY - yGap;
+
+                // 기울어진 발판(함정)은 고도가 어느 정도 높아진 후(약 600m 이상)부터 서서히 등장
+                const isSloped = difficulty > 0.2 ? Math.random() < (difficulty * 0.5) : false;
+                const angle = isSloped ? (Math.random() - 0.5) * 0.6 : 0;
+
+                const platform = Bodies.rectangle(x, y, width, 20, { 
+                    isStatic: true, 
+                    angle: angle,
+                    render: { 
+                        fillStyle: isSloped ? '#8B0000' : '#16213e', 
+                        strokeStyle: isSloped ? '#ff4a4a' : 'transparent',
+                        lineWidth: isSloped ? 2 : 0
+                    },
+                    friction: 0.8,
+                    restitution: isSloped ? 0.5 : 0.1 // 기울어진 발판은 더 잘 미끄러지고 튕김
+                });
+                
+                Composite.add(world, platform);
+                platforms.push(platform);
+                highestY = y;
+            }
+        };
+        // 초기 발판 생성
+        generateMorePlatforms(window.innerHeight);
+
+        // 마우스 드래그를 통한 새총 조작 방식 (Custom)
+        let isAiming = false;
+        let dragStart = { x: 0, y: 0 };
+        let currentMouse = { x: 0, y: 0 };
+
+        render.canvas.addEventListener('mousedown', (e) => {
+            // 카메라 위치 보정 (World 좌표계로 변환)
+            const offset = render.bounds.min;
+            const worldMousePos = { x: e.clientX + offset.x, y: e.clientY + offset.y };
+
+            // 플레이어를 클릭했는지 확인 (클릭 판정 반경 60)
+            const dist = Matter.Vector.magnitude(Matter.Vector.sub(worldMousePos, player.position));
+            if (dist < 60) { 
+                isAiming = true;
+                dragStart = worldMousePos;
+            }
+        });
+
+        render.canvas.addEventListener('mousemove', (e) => {
+            if (isAiming) {
+                const offset = render.bounds.min;
+                currentMouse = { x: e.clientX + offset.x, y: e.clientY + offset.y };
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (isAiming) {
+                isAiming = false;
+                const offset = render.bounds.min;
+                const dragEnd = { x: e.clientX + offset.x, y: e.clientY + offset.y };
+                
+                // 드래그 방향의 반대로 날아가야 함 (시작점 - 끝점)
+                const forceVector = Matter.Vector.sub(dragStart, dragEnd);
+                
+                // 속도 증분 설정 (정확한 궤적 예측을 위해 힘 대신 속도를 직접 변경)
+                const velocityMultiplier = 0.14; 
+                
+                Matter.Body.setVelocity(player, {
+                    x: player.velocity.x + forceVector.x * velocityMultiplier,
+                    y: player.velocity.y + forceVector.y * velocityMultiplier
+                });
+                
+                // 짜증나는 조작감을 위한 랜덤 회전력
+                Matter.Body.setAngularVelocity(player, (Math.random() - 0.5) * 0.8);
+            }
+        });
+
+        // 조준선(에임) 및 예상 경로(Trajectory) 시각화
+        Events.on(render, 'afterRender', function() {
+            if (isAiming) {
+                const context = render.context;
+                const offset = render.bounds.min;
+                
+                // 가해질 속도 계산
+                const forceVector = Matter.Vector.sub(dragStart, currentMouse);
+                const velocityMultiplier = 0.14; 
+                
+                // 초기 속도 추정 (현재 속도 + 잡아당긴 힘으로 발생할 속도)
+                let vx = player.velocity.x + forceVector.x * velocityMultiplier;
+                let vy = player.velocity.y + forceVector.y * velocityMultiplier;
+                
+                // 중력 및 공기 저항 가속도 (Matter.js 변환 상수 적용)
+                const gx = engine.gravity.x * engine.gravity.scale * 277.77;
+                const gy = engine.gravity.y * engine.gravity.scale * 277.77;
+                const airFriction = 1 - player.frictionAir;
+
+                let px = player.position.x;
+                let py = player.position.y;
+                
+                // 네모(플레이어) 중심에서부터 궤적 그리기 시작
+                context.beginPath();
+                context.moveTo(px - offset.x, py - offset.y);
+                
+                // 미래 60프레임(약 1초) 시뮬레이션을 통해 포물선 경로 계산
+                // 당기는 힘이 강할수록 포물선이 자연스럽게 더 길게 그려짐
+                for (let i = 0; i < 60; i++) {
+                    vx += gx;
+                    vy += gy;
+                    vx *= airFriction;
+                    vy *= airFriction;
+                    
+                    px += vx;
+                    py += vy;
+                    
+                    context.lineTo(px - offset.x, py - offset.y);
+                }
+                
+                // 경로를 시각적인 점선으로 렌더링
+                context.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // 에임 색상 (흰색 반투명)
+                context.lineWidth = 4;
+                context.setLineDash([10, 15]); // 점선 스타일 (선 길이 10, 여백 15)
+                context.stroke();
+                context.setLineDash([]); // 점선 설정 초기화
+            }
+        });
+
+        // 카메라 이동 로직 및 고도계 업데이트
+        const altimeterUI = document.getElementById('altimeter');
+        let maxScore = 0;
+        let isGameOver = false;
+        let minCameraY = 999999; // 초기 카메라 Y축 최소값 (초기화 시 현재 플레이어 위치로 덮어씌워짐)
+
+        function triggerGameOver() {
+            if (isGameOver) return;
+            isGameOver = true;
+            document.getElementById('gameOverScreen').style.display = 'flex';
+            document.getElementById('finalScore').innerText = `최고 도달: ${maxScore > 0 ? maxScore : 0}m`;
+            Matter.Body.setStatic(player, true);
+        }
+
+        window.restartGame = function() {
+            if (!isGameOver) return;
+            isGameOver = false;
+            document.getElementById('gameOverScreen').style.display = 'none';
+            
+            // 플레이어 초기화
+            Matter.Body.setStatic(player, false);
+            Matter.Body.setPosition(player, { x: window.innerWidth / 2, y: window.innerHeight - 100 });
+            Matter.Body.setVelocity(player, { x: 0, y: 0 });
+            Matter.Body.setAngularVelocity(player, 0);
+            
+            // 카메라 초기화
+            minCameraY = 999999;
+            
+            // 맵 초기화
+            highestY = window.innerHeight - 100;
+            platforms.forEach(p => Composite.remove(world, p));
+            platforms = [];
+            generateMorePlatforms(window.innerHeight);
+            
+            // 점수 초기화
+            maxScore = 0;
+            altimeterUI.innerHTML = `최고: 0m<br>현재: 0m`;
+            render.options.background = '#1a1a2e';
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (isGameOver && (e.key === 'z' || e.key === 'Z')) {
+                restartGame();
+            }
+        });
+
+        Events.on(engine, 'beforeUpdate', () => {
+            if (isGameOver) return;
+
+            // 카메라 포커스를 플레이어에게 맞춤 (수직으로만)
+            // 화면의 75% 아래 지점에 플레이어를 위치시켜 위쪽(다음 발판) 시야를 넓게 확보
+            const targetY = player.position.y - window.innerHeight * 0.75;
+            
+            // 카메라는 위로만 올라가고, 아래로는 내려가지 않도록 수정
+            if (targetY < minCameraY) {
+                minCameraY = targetY;
+            }
+            
+            Render.lookAt(render, {
+                min: { x: 0, y: minCameraY },
+                max: { x: window.innerWidth, y: minCameraY + window.innerHeight }
+            });
+
+            // 화면 밑으로 떨어지면 게임 오버
+            if (player.position.y > minCameraY + window.innerHeight + 50) {
+                triggerGameOver();
+                return;
+            }
+
+            // 플레이어 높이에 맞춰 무한 발판 생성
+            generateMorePlatforms(player.position.y);
+
+            // 메모리 최적화: 화면보다 3000px 이상 아래에 있는 지난 발판 제거
+            platforms = platforms.filter(p => {
+                if (p.position.y > minCameraY + window.innerHeight + 3000) {
+                    Composite.remove(world, p);
+                    return false;
+                }
+                return true;
+            });
+
+            // 고도 계산 (바닥 기준)
+            const currentHeight = Math.floor((window.innerHeight - player.position.y) / 50);
+            if (currentHeight > maxScore) maxScore = currentHeight;
+
+            altimeterUI.innerHTML = `최고: ${maxScore > 0 ? maxScore : 0}m<br>현재: ${currentHeight > 0 ? currentHeight : 0}m`;
+            
+            // 레벨(높이)이 올라갈수록 배경색 변화
+            const ratio = Math.min(Math.max(currentHeight, 0) / 1500, 1); // 1500m에서 최대 변화
+            const r = Math.floor(26 + (74 - 26) * ratio); // 26 -> 74 (붉은 계열 증가)
+            const g = Math.floor(26 + (0 - 26) * ratio);  // 26 -> 0
+            const b = Math.floor(46 + (0 - 46) * ratio);  // 46 -> 0
+            render.options.background = `rgb(${r}, ${g}, ${b})`;
+        });
+
+        // 실행
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // 창 크기 조절 대응
+        window.addEventListener('resize', () => {
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+            Matter.Body.setPosition(ground, { x: window.innerWidth/2, y: window.innerHeight });
+            Matter.Body.setPosition(rightWall, { x: window.innerWidth, y: rightWall.position.y });
+        });
+    </script>
+</body>
+</html>
